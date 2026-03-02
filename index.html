@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cc-scope — File Scope per Claude Code Session</title>
+<meta name="description" content="43% of Claude Code sessions touch only 2-5 files. 14% are single-file. Only 4% sweep 31+ files. What's the blast radius of your sessions?">
+<meta property="og:title" content="cc-scope — How Many Files Does Claude Touch Per Session?">
+<meta property="og:description" content="Median 4 files. p90 is 16. Max 1,288. Measure the blast radius of each Claude Code session.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+.hero{background:linear-gradient(135deg,#161b22 0%,#0d1117 100%);border-bottom:1px solid #21262d;padding:48px 24px 40px;text-align:center}
+.hero h1{font-size:2.2rem;font-weight:700;color:#f0f6fc;letter-spacing:-0.5px}
+.hero h1 span{color:#3fb950}
+.hero p{color:#8b949e;margin-top:10px;font-size:1.05rem;max-width:540px;margin-inline:auto}
+.cmd{display:inline-block;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:8px 18px;font-family:monospace;font-size:1rem;color:#79c0ff;margin-top:18px}
+.drop-zone{border:2px dashed #30363d;border-radius:12px;padding:32px;margin:28px auto;max-width:500px;text-align:center;cursor:pointer;transition:.2s;color:#8b949e;font-size:.95rem}
+.drop-zone:hover,.drop-zone.drag{border-color:#3fb950;color:#3fb950}
+.drop-zone.loaded{border-color:#3fb950;color:#3fb950}
+#status{text-align:center;color:#8b949e;font-size:.9rem;margin-bottom:8px}
+.main{max-width:900px;margin:0 auto;padding:32px 16px}
+
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
+.stat-box{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:14px 16px;text-align:center}
+.stat-val{font-size:1.7rem;font-weight:700;color:#3fb950}
+.stat-lbl{font-size:.8rem;color:#8b949e;margin-top:3px}
+
+.card{background:#161b22;border:1px solid #21262d;border-radius:10px;padding:20px;margin-bottom:24px}
+.card-title{font-size:1rem;font-weight:600;color:#f0f6fc;margin-bottom:6px}
+.card-sub{font-size:.82rem;color:#8b949e;margin-bottom:16px}
+
+.scope-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.scope-label{width:90px;font-size:.84rem;font-family:monospace;color:#c9d1d9;text-align:right;flex-shrink:0}
+.scope-track{flex:1;background:#21262d;border-radius:4px;height:26px;position:relative;overflow:hidden}
+.scope-fill{height:100%;border-radius:4px;transition:width .5s ease;background:#3fb950}
+.scope-pct{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:.76rem;font-family:monospace;color:#e6edf3}
+.scope-desc{width:120px;font-size:.75rem;color:#484f58;flex-shrink:0}
+
+.ext-row{display:flex;justify-content:space-between;padding:5px 10px;border-radius:4px;font-size:.84rem;font-family:monospace}
+.ext-row:hover{background:#1c2128}
+.ext-name{color:#79c0ff}
+.ext-count{color:#3fb950;font-weight:600}
+
+.insight ul{list-style:none;display:flex;flex-direction:column;gap:7px;margin-top:10px}
+.insight li{font-size:.88rem;color:#8b949e;padding-left:18px;position:relative;line-height:1.5}
+.insight li::before{content:'→';position:absolute;left:0;color:#3fb950}
+.insight li strong{color:#e6edf3}
+
+.footer{text-align:center;padding:32px 16px;color:#8b949e;font-size:.85rem;border-top:1px solid #21262d;margin-top:16px}
+.footer a{color:#58a6ff;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>cc-<span>scope</span></h1>
+  <p>How many files does Claude touch per session? Measure the <strong>blast radius</strong> of each Claude Code session.</p>
+  <div class="cmd">npx cc-scope</div>
+</div>
+
+<div class="main">
+  <div class="drop-zone" id="dropZone">
+    Drop your <code>~/.claude/projects/</code> folder here<br>
+    <small style="margin-top:6px;display:block">or click to select</small>
+    <input type="file" id="fileInput" webkitdirectory multiple style="display:none">
+  </div>
+  <div id="status"></div>
+
+  <div id="output" style="display:none">
+    <div class="stats-row" id="statsRow"></div>
+
+    <div class="card">
+      <div class="card-title">Scope distribution</div>
+      <div class="card-sub">Unique files touched per session (Read + Edit + Write)</div>
+      <div id="scopeBars"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Most-touched file types</div>
+      <div class="card-sub">By total access count across all sessions</div>
+      <div id="extList"></div>
+    </div>
+
+    <div class="card insight">
+      <div class="card-title">What this means</div>
+      <ul id="insightList"></ul>
+    </div>
+  </div>
+
+  <!-- Default sample data -->
+  <div id="sample">
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-val">1,710</div><div class="stat-lbl">Sessions</div></div>
+      <div class="stat-box"><div class="stat-val">4</div><div class="stat-lbl">Median files</div></div>
+      <div class="stat-box"><div class="stat-val">10.5</div><div class="stat-lbl">Mean files</div></div>
+      <div class="stat-box"><div class="stat-val">16</div><div class="stat-lbl">p90 files</div></div>
+      <div class="stat-box"><div class="stat-val">1,288</div><div class="stat-lbl">Max files</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Scope distribution</div>
+      <div class="card-sub">Unique files touched per session (Read + Edit + Write)</div>
+      <div class="scope-row"><div class="scope-label">1 file</div><div class="scope-track"><div class="scope-fill" style="width:34%"></div><div class="scope-pct">14.2%</div></div><div class="scope-desc">single-file focus</div></div>
+      <div class="scope-row"><div class="scope-label">2–5 files</div><div class="scope-track"><div class="scope-fill" style="width:100%"></div><div class="scope-pct">42.9%</div></div><div class="scope-desc">focused</div></div>
+      <div class="scope-row"><div class="scope-label">6–15</div><div class="scope-track"><div class="scope-fill" style="width:75%"></div><div class="scope-pct">32.0%</div></div><div class="scope-desc">moderate scope</div></div>
+      <div class="scope-row"><div class="scope-label">16–30</div><div class="scope-track"><div class="scope-fill" style="width:16%"></div><div class="scope-pct">7.0%</div></div><div class="scope-desc">broad</div></div>
+      <div class="scope-row"><div class="scope-label">31+</div><div class="scope-track"><div class="scope-fill" style="width:9%"></div><div class="scope-pct">3.9%</div></div><div class="scope-desc">sweeping</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Most-touched file types</div>
+      <div class="card-sub">By total access count across all sessions</div>
+      <div class="ext-row"><div class="ext-name">.py</div><div class="ext-count">16,769</div></div>
+      <div class="ext-row"><div class="ext-name">.gd</div><div class="ext-count">12,687</div></div>
+      <div class="ext-row"><div class="ext-name">.md</div><div class="ext-count">11,994</div></div>
+      <div class="ext-row"><div class="ext-name">.html</div><div class="ext-count">3,927</div></div>
+      <div class="ext-row"><div class="ext-name">.png</div><div class="ext-count">2,669</div></div>
+      <div class="ext-row"><div class="ext-name">.yaml</div><div class="ext-count">2,273</div></div>
+      <div class="ext-row"><div class="ext-name">.js</div><div class="ext-count">1,521</div></div>
+    </div>
+    <div class="card insight">
+      <div class="card-title">What this means</div>
+      <ul>
+        <li><strong>43% of sessions touch 2–5 files</strong> — most Claude Code work is focused, not sweeping</li>
+        <li><strong>14% are single-file sessions</strong> — targeted edits or quick lookups</li>
+        <li><strong>Only 4% touch 31+ files</strong> — broad refactors are rare but they happen</li>
+        <li><strong>p90 is 16 files</strong> — even heavy sessions stay surprisingly contained</li>
+        <li><strong>Max 1,288 files</strong> — outliers exist for codebase-wide exploration</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Part of <a href="https://yurukusa.github.io/cc-toolkit/" target="_blank">cc-toolkit</a> —
+  92 free tools for Claude Code users ·
+  <a href="https://github.com/yurukusa/cc-scope" target="_blank">GitHub</a>
+</div>
+
+<script>
+const BRACKETS = [
+  {key:'1',label:'1 file',min:1,max:1,desc:'single-file focus'},
+  {key:'2-5',label:'2–5 files',min:2,max:5,desc:'focused'},
+  {key:'6-15',label:'6–15',min:6,max:15,desc:'moderate scope'},
+  {key:'16-30',label:'16–30',min:16,max:30,desc:'broad'},
+  {key:'31+',label:'31+',min:31,max:Infinity,desc:'sweeping'},
+];
+const FILE_TOOLS = new Set(['Read','Edit','Write']);
+
+function processLines(lines) {
+  const sessions = {};
+  for (const line of lines) {
+    if (!line.includes('"tool_use"')) continue;
+    let obj; try { obj = JSON.parse(line); } catch { continue; }
+    const sid = obj.sessionId || obj.session_id || 'unknown';
+    const content = (obj.message || obj).content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      if (b.type !== 'tool_use' || !FILE_TOOLS.has(b.name) || !b.input) continue;
+      const fp = b.input.file_path || '';
+      if (!fp) continue;
+      if (!sessions[sid]) sessions[sid] = { files: new Set(), ext: {} };
+      sessions[sid].files.add(fp);
+      const dot = fp.lastIndexOf('.');
+      const ext = dot >= 0 ? fp.slice(dot+1).toLowerCase().slice(0,8) : 'none';
+      sessions[sid].ext[ext] = (sessions[sid].ext[ext]||0)+1;
+    }
+  }
+  return sessions;
+}
+
+function computeStats(sessions) {
+  const counts = [];
+  const extCounts = {};
+  for (const s of Object.values(sessions)) {
+    if (s.files.size === 0) continue;
+    counts.push(s.files.size);
+    for (const [ext, n] of Object.entries(s.ext)) extCounts[ext] = (extCounts[ext]||0)+n;
+  }
+  counts.sort((a,b)=>a-b);
+  const n = counts.length;
+  const bracketCounts = Object.fromEntries(BRACKETS.map(b=>[b.key,0]));
+  for (const c of counts) {
+    for (const b of BRACKETS) if (c>=b.min && c<=b.max){ bracketCounts[b.key]++; break; }
+  }
+  return {
+    sessions: n,
+    median: n>0?counts[Math.floor(n/2)]:0,
+    mean: n>0?(counts.reduce((a,b)=>a+b,0)/n).toFixed(1):'0.0',
+    p90: n>0?counts[Math.floor(n*0.9)]:0,
+    max: n>0?counts[n-1]:0,
+    bracketCounts, extCounts,
+  };
+}
+
+function renderStats(m) {
+  document.getElementById('sample').style.display='none';
+  document.getElementById('output').style.display='block';
+  const sr = document.getElementById('statsRow');
+  const stats = [
+    {val:m.sessions.toLocaleString(), lbl:'Sessions'},
+    {val:m.median, lbl:'Median files'},
+    {val:m.mean, lbl:'Mean files'},
+    {val:m.p90, lbl:'p90 files'},
+    {val:m.max.toLocaleString(), lbl:'Max files'},
+  ];
+  sr.innerHTML = stats.map(s=>`<div class="stat-box"><div class="stat-val">${s.val}</div><div class="stat-lbl">${s.lbl}</div></div>`).join('');
+  const maxN = Math.max(...BRACKETS.map(b=>m.bracketCounts[b.key]));
+  document.getElementById('scopeBars').innerHTML = BRACKETS.map(b=>{
+    const n=m.bracketCounts[b.key];
+    const pct=(m.sessions>0?(n/m.sessions*100).toFixed(1):'0.0');
+    const w=maxN>0?Math.round(n/maxN*100):0;
+    return `<div class="scope-row"><div class="scope-label">${b.label}</div><div class="scope-track"><div class="scope-fill" style="width:${w}%"></div><div class="scope-pct">${pct}%</div></div><div class="scope-desc">${b.desc}</div></div>`;
+  }).join('');
+  const extTop = Object.entries(m.extCounts).sort(([,a],[,b])=>b-a).slice(0,8);
+  document.getElementById('extList').innerHTML = extTop.map(([ext,n])=>`<div class="ext-row"><div class="ext-name">.${ext}</div><div class="ext-count">${n.toLocaleString()}</div></div>`).join('');
+  const topBracket = BRACKETS.slice().sort((a,b)=>m.bracketCounts[b.key]-m.bracketCounts[a.key])[0];
+  document.getElementById('insightList').innerHTML = [
+    `<strong>${(m.bracketCounts['2-5']/m.sessions*100).toFixed(0)}% of sessions touch 2–5 files</strong> — most work is focused, not sweeping`,
+    `<strong>${(m.bracketCounts['1']/m.sessions*100).toFixed(0)}% are single-file sessions</strong> — targeted edits or quick lookups`,
+    `<strong>Only ${(m.bracketCounts['31+']/m.sessions*100).toFixed(0)}% touch 31+ files</strong> — broad refactors are rare but they happen`,
+    `<strong>p90 is ${m.p90} files</strong> — even heavy sessions stay surprisingly contained`,
+    `<strong>Max ${m.max.toLocaleString()} files</strong> — outliers exist for codebase-wide exploration`,
+  ].map(t=>`<li>${t}</li>`).join('');
+}
+
+// Drop zone
+const dz = document.getElementById('dropZone');
+const fi = document.getElementById('fileInput');
+dz.onclick = ()=>fi.click();
+dz.ondragover = e=>{e.preventDefault();dz.classList.add('drag')};
+dz.ondragleave = ()=>dz.classList.remove('drag');
+dz.ondrop = e=>{e.preventDefault();dz.classList.remove('drag');handleFiles(e.dataTransfer.files)};
+fi.onchange = e=>handleFiles(e.target.files);
+
+async function handleFiles(files) {
+  const jsonlFiles = [...files].filter(f=>f.name.endsWith('.jsonl'));
+  if (!jsonlFiles.length){document.getElementById('status').textContent='No .jsonl files found';return}
+  dz.classList.add('loaded');
+  document.getElementById('status').textContent=`Processing ${jsonlFiles.length} files…`;
+  const allLines = [];
+  await Promise.all(jsonlFiles.map(f=>f.text().then(t=>allLines.push(...t.split('\n')))));
+  const sessions = processLines(allLines);
+  const m = computeStats(sessions);
+  renderStats(m);
+  document.getElementById('status').textContent=`${jsonlFiles.length} files · ${m.sessions} sessions`;
+}
+</script>
+</body>
+</html>

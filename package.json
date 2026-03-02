@@ -1,0 +1,26 @@
+{
+  "name": "cc-scope",
+  "version": "1.0.0",
+  "description": "Measure the file footprint of each Claude Code session — how many unique files does Claude touch per session?",
+  "type": "module",
+  "bin": {
+    "cc-scope": "./cli.mjs"
+  },
+  "scripts": {
+    "start": "node cli.mjs"
+  },
+  "keywords": [
+    "claude", "claude-code", "anthropic", "cli", "productivity",
+    "ai", "developer-tools", "session-analysis", "files", "scope"
+  ],
+  "author": "yurukusa",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yurukusa/cc-scope"
+  },
+  "homepage": "https://yurukusa.github.io/cc-scope/"
+}
