@@ -57,4 +57,11 @@ Part of [cc-toolkit](https://yurukusa.github.io/cc-toolkit/) — tools for under
 
 ---
 
+
+### Want to optimize how Claude Code uses its tools?
+
+**[Claude Code Ops Kit](https://yurukusa.github.io/cc-ops-kit-landing/?utm_source=github&utm_medium=readme&utm_campaign=cc-scope)** ($19) — 10 production hooks + 5 templates + 3 tools. Built from 160+ hours of autonomous operation.
+
+---
+
 *Source: [yurukusa/cc-scope](https://github.com/yurukusa/cc-scope)*
